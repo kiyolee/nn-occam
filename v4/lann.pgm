@@ -1,0 +1,25 @@
+#INCLUDE "hostio.inc"
+#INCLUDE "linkaddr.inc"
+
+#INCLUDE "la.inc"
+
+#USE "main.c4h"
+#USE "lagrp.c4h"
+
+CHAN OF SP fs, ts :
+
+CHAN OF LA.LINK.IN la.p0.in :
+CHAN OF LA.LINK.OUT la.p0.out :
+
+PLACED PAR
+  PROCESSOR 0 T414
+    PLACE ts AT link0.out :
+    PLACE fs AT link0.in  :
+    PLACE la.p0.in  AT link1.out :
+    PLACE la.p0.out AT link1.in  :
+    main (fs, ts, la.p0.out, la.p0.in)
+
+  PROCESSOR 1 T414
+    PLACE la.p0.out AT link0.out :
+    PLACE la.p0.in  AT link0.in  :
+    la.group (la.p0.in, la.p0.out)

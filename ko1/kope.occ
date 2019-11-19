@@ -1,0 +1,140 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "tbmaths.lib"
+
+#USE "..\lib\supp.lib"
+
+#INCLUDE "ko.inc"
+
+PROC weight.init (INT req, []REAL32 weight)
+  VAL sz IS SIZE weight :
+  IF
+    req <> 0
+      INT32 seed :
+      SEQ
+	seed := INT32 req
+	SEQ i = 0 FOR sz
+	  SEQ
+	    weight[i], seed := rand.delta (seed)
+	    weight[i] := weight[i] * 0.01 (REAL32)
+	req := INT seed
+    TRUE
+      SEQ i = 0 FOR sz
+	weight[i] := 0.0 (REAL32)
+:
+
+PROC wait.all.input ([]CHAN OF REAL32 inp,[]REAL32 x)
+  VAL inp.sz IS SIZE inp :
+  VAL x.sz IS SIZE x :
+  IF
+    (inp.sz = x.sz) AND (inp.sz <= no.input)
+      PAR i = 0 FOR no.input
+	IF
+	  i < inp.sz
+	    inp[i] ? x[i]
+	  TRUE
+	    SKIP
+    TRUE
+      SEQ i = 0 FOR x.sz
+	x[i] := 0.0 (REAL32)
+:
+
+PROC Euclidean.distance (VAL []REAL32 x, VAL []REAL32 w, REAL32 dist)
+  VAL x.sz IS SIZE x :
+  VAL w.sz IS SIZE w :
+  IF
+    x.sz = w.sz
+      SEQ
+	dist := 0.0 (REAL32)
+	SEQ i = 0 FOR x.sz
+	  dist := dist + ((x[i] - w[i]) * (x[i] - w[i]))
+	dist := POWER (dist, 0.5 (REAL32))
+    TRUE
+      dist := 1000.0 (REAL32)
+:
+
+PROC Spherical.arc.distance (VAL []REAL32 x, VAL []REAL32 w, REAL32 dist)
+  VAL x.sz IS SIZE x :
+  VAL w.sz IS SIZE w :
+  IF
+    x.sz = w.sz
+      SEQ
+	dist := 1.0 (REAL32)
+	SEQ i = 0 FOR x.sz
+	  dist := dist - (x[i] * w[i])
+    TRUE
+      dist := 1000.0 (REAL32)
+:
+
+PROC kohonen.learning (VAL []REAL32 x, VAL INT zi,
+		       []REAL32 w, VAL REAL32 learning.rate)
+  VAL x.sz IS SIZE x :
+  VAL w.sz IS SIZE w :
+  IF
+    (x.sz = w.sz) AND (zi = 1)
+      SEQ i = 0 FOR x.sz
+	w[i] := ((1.0 (REAL32) - learning.rate) * w[i]) +
+		    (learning.rate * x[i])
+    TRUE
+      SKIP
+:
+
+PROC ko.pe (VAL INT i.id, VAL INT iseed,
+	    CHAN OF KO.CTRL ctrl,
+	    [no.input]CHAN OF REAL32 inp,
+	    CHAN OF REAL32 outp,
+	    CHAN OF INT zinp)
+  INT id, seed, seed2 :
+  BOOL cont :
+  [no.input]REAL32 weight :
+  VAL default.learning.rate IS 0.05 (REAL32) :
+  REAL32 learning.rate :
+  SEQ
+    id := i.id
+    learning.rate := default.learning.rate
+    seed := iseed
+    seed2 := iseed
+    cont := TRUE
+    WHILE cont
+      ctrl ? CASE
+	kc.kill
+	  cont := FALSE
+	kc.reset
+	  INT r :
+	  SEQ
+	    r := 0
+	    weight.init (r, weight)
+	kc.init
+	  SEQ
+	    IF
+	      seed = 0
+		SEQ
+		  seed2 := seed2 + 12347
+		  seed := seed2
+	      TRUE
+		SKIP
+	    weight.init (seed, weight)
+	kc.learn
+	  INT z :
+	  [no.input]REAL32 x :
+	  SEQ
+	    PAR
+	      wait.all.input (inp, x)
+	      zinp ? z
+	    kohonen.learning (x, z, weight, learning.rate)
+	kc.operate
+	  REAL32 y :
+	  [no.input]REAL32 x :
+	  SEQ
+	    wait.all.input (inp, x)
+	    -- Euclidean.distance (x, weight, y)
+	    Spherical.arc.distance (x, weight, y)
+	    outp ! y
+	kc.change.learning.rate
+	  inp[0] ? learning.rate
+	kc.load
+	  wait.all.input (inp, weight)
+	kc.save
+	  SEQ i = 0 FOR no.input
+	    outp ! weight[i]
+:

@@ -1,0 +1,71 @@
+#INCLUDE "hostio.inc"
+#INCLUDE "pe.inc"
+#USE "hostio.lib"
+
+PROC pe (VAL INT16      id,         -- processing element identity
+         CHAN OF SP     fs, ts,     -- server channels
+         CHAN OF INT16  cntrl,      -- control channel
+         CHAN OF INT32  i.par,      -- input parameter for controlling
+         CHAN OF INT32  o.par,      -- output parameter for controlling
+       []CHAN OF INT32  i.con,      -- input connections
+       []CHAN OF INT32  o.con,      -- output connections
+         CHAN OF INT32  i.learn)    -- learning input channel
+
+  VAL no.weight IS SIZE i.con :     -- no. of input connections
+  [max.no.weight]INT32 weight :     -- weight matrix
+  INT16 cmd :                       -- command from control channel
+  BOOL run.flag :                   -- running flag
+
+  SEQ
+    IF
+      no.weight > max.no.weight
+        SEQ
+          so.write.string (fs, ts, "PE #")
+          so.write.int (fs, ts, INT id, 0)
+	  so.write.string.nl (fs, ts, " TOO MANY INPUTS [QUIT].")
+	  run.flag := TRUE
+	  WHILE run.flag
+	    SEQ
+	      cntrl ? cmd
+	      IF
+		cmd = pe.cmd.quit
+		  SEQ
+		    run.flag := FALSE
+		TRUE
+		  SKIP
+
+      TRUE
+        SEQ
+          run.flag := TRUE
+          WHILE run.flag
+            SEQ
+              cntrl ? cmd
+              CASE cmd
+                pe.cmd.quit
+                  run.flag := FALSE
+
+                pe.cmd.reset
+                  SEQ i = 0 FOR no.weight
+                    weight[i] := 0(INT32)
+
+                pe.cmd.init
+                  SEQ i = 0 FOR no.weight
+                    weight[i] := 1(INT32)
+
+                pe.cmd.learn
+                  SKIP
+
+                pe.cmd.operate
+                  SKIP
+
+                pe.cmd.load
+                  SEQ i = 0 FOR no.weight
+                    i.par ? weight[i]
+
+                pe.cmd.save
+                  SEQ i = 0 FOR no.weight
+                    o.par ! weight[i]
+
+                ELSE
+                  SKIP
+:

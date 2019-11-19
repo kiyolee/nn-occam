@@ -1,0 +1,177 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#USE "supp.t4h"
+
+PROC open.float.data (CHAN OF SP fs, ts, VAL INT max.n, VAL INT n,
+		      INT32 sid, BYTE res)
+  VAL fn.prefix.len IS 40 :
+  [fn.prefix.len]BYTE fn.prefix :
+  INT ge.len :
+  BYTE ge.res :
+  SEQ
+    so.getenv (fs, ts, "TRAINDATA", ge.len, fn.prefix, ge.res)
+    IF
+      (ge.res <> spr.ok) OR (n < 1) OR (n > max.n)
+	SEQ
+	  sid := -1 (INT32)
+	  res := spr.operation.failed
+      TRUE
+	[40]BYTE fn :
+	SEQ
+	  IF
+	    ge.len >= fn.prefix.len
+	      ge.len := fn.prefix.len - 1
+	    TRUE
+	      SKIP
+	  gen.filename (fn, [fn.prefix FROM 0 FOR ge.len], ".bin", n, 2)
+	  so.open (fs, ts, fn, spt.binary, spm.input, sid, res)
+	  IF
+	    res <> spr.ok
+	      sid := -1 (INT32)
+	    TRUE
+	      SKIP
+:
+
+PROC read.float.data (CHAN OF SP fs, ts, VAL INT32 sid,
+		      []REAL32 fdat,
+		      VAL INT src.size,
+			      des.row.size, des.row.offset,
+			      src.row.size, src.row.offset,
+			      copy.size,
+		      BYTE res)
+  VAL max.src.size IS 160 :
+  SEQ
+    IF
+      (src.size <= max.src.size) AND (src.size > 0)
+	VAL SZ.REAL32 IS 4 :
+	VAL read.len IS src.size * SZ.REAL32 :
+	[max.src.size]REAL32 tf :
+	INT len :
+	SEQ
+	  len := read.len
+	  [max.src.size * SZ.REAL32]BYTE b RETYPES tf :
+	  so.read (fs, ts, sid, len, [b FROM 0 FOR read.len])
+	  IF
+	    len = read.len
+	      SEQ
+		VAL fdat.size IS SIZE fdat :
+		VAL no.row IS (fdat.size/des.row.size) :
+		SEQ i = 0 FOR no.row
+		  VAL des.offset IS (i*des.row.size)+des.row.offset :
+		  VAL src.offset IS (i*src.row.size)+src.row.offset :
+		  [fdat FROM des.offset FOR copy.size] :=
+		      [tf FROM src.offset FOR copy.size]
+		res := spr.ok
+	    TRUE
+	      res := spr.operation.failed
+      TRUE
+	res := spr.operation.failed
+:
+
+PROC close.float.data (CHAN OF SP fs, ts, VAL INT32 sid, BYTE res)
+  SEQ
+    so.close (fs, ts, sid, res)
+:
+
+PROC open.all.float.data (CHAN OF SP fs, ts, VAL INT start,
+			  []INT32 sid, []BYTE res, BOOL success)
+  VAL no.sid IS SIZE sid :
+  VAL no.res IS SIZE res :
+  SEQ
+    success := TRUE
+    SEQ i = 0 FOR no.sid
+      BYTE r :
+      SEQ
+	open.float.data (fs, ts, no.sid, i+start, sid[i], r)
+	success := success AND (r = spr.ok)
+	IF
+	  i < no.res
+	    res[i] := r
+	  TRUE
+	    SKIP
+:
+
+PROC close.all.float.data (CHAN OF SP fs, ts,
+			   VAL []INT32 sid, []BYTE res, BOOL success)
+  VAL no.sid IS SIZE sid :
+  VAL no.res IS SIZE res :
+  SEQ
+    success := TRUE
+    SEQ i = 0 FOR no.sid
+      IF
+	(i >= no.res) OR (res[i] = spr.ok)
+	  BYTE r :
+	  SEQ
+	    close.float.data (fs, ts, sid[i], r)
+	    success := success AND (r = spr.ok)
+	    IF
+	      i < no.res
+		res[i] := r
+	      TRUE
+		SKIP
+	TRUE
+	  SKIP
+:
+
+PROC next.data (CHAN OF SP fs, ts, VAL []INT32 sid, INT sel,
+		[]REAL32 fdat,
+		VAL INT src.size,
+			des.row.size, des.row.offset,
+			src.row.size, src.row.offset,
+			copy.size,
+		BYTE res)
+  VAL no.sid IS SIZE sid :
+  SEQ
+    IF
+      sel < 0
+	sel := 0
+      sel >= no.sid
+	sel := no.sid - 1
+      TRUE
+	SKIP
+    read.float.data (fs, ts, sid[sel], fdat, src.size,
+		     des.row.size, des.row.offset,
+		     src.row.size, src.row.offset,
+		     copy.size, res)
+    sel := sel + 1
+    IF
+      sel >= no.sid
+	sel := 0
+      TRUE
+	SKIP
+:
+
+PROC next.shuffled.data (CHAN OF SP fs, ts, VAL []INT32 sid,
+			 []INT suf, INT sel,
+			 []REAL32 fdat,
+			 VAL INT src.size,
+				 des.row.size, des.row.offset,
+				 src.row.size, src.row.offset,
+				 copy.size,
+			 BYTE res)
+  VAL no.sid IS SIZE sid :
+  VAL no.suf IS SIZE suf :
+  SEQ
+    IF
+      sel < 0
+	sel := 0
+      sel >= no.suf
+	sel := no.suf - 1
+      TRUE
+	SKIP
+    IF
+      suf[sel] < no.sid
+	read.float.data (fs, ts, sid[suf[sel]], fdat, src.size,
+			 des.row.size, des.row.offset,
+			 src.row.size, src.row.offset,
+			 copy.size, res)
+      TRUE
+	res := spr.operation.failed
+    sel := sel + 1
+    IF
+      sel >= no.suf
+	sel := 0
+      TRUE
+	SKIP
+:

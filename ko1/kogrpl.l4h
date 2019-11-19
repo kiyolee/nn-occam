@@ -1,0 +1,13 @@
+--
+-- Version 2.70, 14th April 1989
+--
+-- linker command file "kogrpl.l4h"
+--
+kogrpl.t4h
+hostio.lib
+convert.lib
+kogrp.t4h
+kope.t4h
+tbmaths.lib
+..\lib\supp.lib
+occambh.lib

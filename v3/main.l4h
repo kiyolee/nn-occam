@@ -1,0 +1,17 @@
+--
+-- Version 2.70, 14th April 1989
+--
+-- linker command file "main.l4h"
+--
+main.t4h
+hostio.lib
+convert.lib
+nn.t4h
+la.t4h
+rand.t4h
+tbmaths.lib
+waitkey.t4h
+supp.t4h
+fdrd.t4h
+string.lib
+occambh.lib

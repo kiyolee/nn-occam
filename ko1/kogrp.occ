@@ -1,0 +1,224 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "ko.inc"
+#USE "kope.t4h"
+
+PROC wait.for.ko.config (CHAN OF KO.LINK.IN ko.grp.in,
+			 INT no.of.pe, start.id, seed)
+  BOOL flag :
+  SEQ
+    flag := TRUE
+    WHILE flag
+      ko.grp.in ? CASE
+	ki.config; no.of.pe; start.id; seed
+	  IF
+	    (no.of.pe <= 0) OR (no.of.pe > no.pe) OR
+		(start.id < 0) OR (seed = 0)
+	      SKIP
+	    TRUE
+	      flag := FALSE
+	ki.kill
+	  SKIP
+	ki.reset
+	  SKIP
+	ki.init
+	  SKIP
+	[no.input]REAL32 r1 :
+	INT i :
+	[no.pe]INT z :
+	ki.learn; r1; i::z
+	  SKIP
+	[no.input]REAL32 r :
+	ki.operate; r
+	  SKIP
+	INT i :
+	[no.input]REAL32 r :
+	ki.load; i; r
+	  SKIP
+	INT i :
+	ki.save; i
+	  SKIP
+	REAL32 r :
+	ki.change.learning.rate; r
+	  SKIP
+:
+
+PROC ko.grp.kill ([no.pe]CHAN OF KO.CTRL ctrl, VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	ctrl[i] ! kc.kill
+      TRUE
+	SKIP
+:
+
+PROC ko.grp.reset ([no.pe]CHAN OF KO.CTRL ctrl, VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	ctrl[i] ! kc.reset
+      TRUE
+	SKIP
+:
+
+PROC ko.grp.init ([no.pe]CHAN OF KO.CTRL ctrl, VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	ctrl[i] ! kc.init
+      TRUE
+	SKIP
+:
+
+PROC ko.grp.learn (VAL [no.input]REAL32 x.in,
+		   VAL [no.pe]INT z,
+		   [no.pe]CHAN OF KO.CTRL ctrl,
+		   [no.pe][no.input]CHAN OF REAL32 inp,
+		   [no.pe]CHAN OF INT zinp,
+		   VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	SEQ
+	  ctrl[i] ! kc.learn
+	  PAR
+	    PAR j = 0 FOR no.input
+	      inp[i][j] ! x.in[j]
+	    zinp[i] ! z[i]
+      TRUE
+	SKIP
+:
+
+PROC ko.grp.operate (VAL [no.input]REAL32 x.in,
+		     [no.pe]REAL32 y.out,
+		     [no.pe]CHAN OF KO.CTRL ctrl,
+		     [no.pe][no.input]CHAN OF REAL32 inp,
+		     [no.pe]CHAN OF REAL32 outp,
+		     VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	SEQ
+	  ctrl[i] ! kc.operate
+	  PAR j = 0 FOR no.input
+	    inp[i][j] ! x.in[j]
+	  outp[i] ? y.out[i]
+      TRUE
+	SKIP
+:
+
+PROC ko.grp.load (VAL INT pe.id, VAL [no.input]REAL32 weight,
+		  [no.pe]CHAN OF KO.CTRL ctrl,
+		  [no.pe][no.input]CHAN OF REAL32 inp,
+		  VAL INT start.id, VAL INT no.of.pe)
+  INT no :
+  SEQ
+    no := pe.id - start.id
+    IF
+      (no < 0) OR (no >= no.of.pe)
+	SKIP
+      TRUE
+	SEQ
+	  ctrl[no] ! kc.load
+	  inp.alias IS inp[no] :
+	  PAR j = 0 FOR no.input
+	    inp.alias[j] ! weight[j]
+:
+
+PROC ko.grp.save (INT pe.id, [no.input]REAL32 weight,
+		  [no.pe]CHAN OF KO.CTRL ctrl,
+		  [no.pe]CHAN OF REAL32 outp,
+		  VAL INT start.id, VAL INT no.of.pe)
+  INT no :
+  SEQ
+    no := pe.id - start.id
+    IF
+      (no < 0) OR (no >= no.of.pe)
+	pe.id := -1
+      TRUE
+	SEQ
+	  ctrl[no] ! kc.save
+	  SEQ j = 0 FOR no.input
+	    outp[no] ? weight[j]
+:
+
+PROC ko.grp.change.learning.rate (VAL REAL32 lr,
+				  [no.pe]CHAN OF KO.CTRL ctrl,
+				  [no.pe][no.input]CHAN OF REAL32 inp,
+				  VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	SEQ
+	  ctrl[i] ! kc.change.learning.rate
+	  inp[i][0] ! lr
+      TRUE
+	SKIP
+:
+
+PROC ko.group (CHAN OF KO.LINK.IN ko.grp.in, CHAN OF KO.LINK.OUT ko.grp.out)
+  INT no.of.pe, start.id, seed :
+  SEQ
+    wait.for.ko.config (ko.grp.in, no.of.pe, start.id, seed)
+    [no.pe]CHAN OF KO.CTRL ctrl :
+    [no.pe][no.input]CHAN OF REAL32 inp :
+    [no.pe]CHAN OF REAL32 outp :
+    [no.pe]CHAN OF INT zinp :
+    PAR
+      PAR i = 0 FOR no.pe
+	IF
+	  i < no.of.pe
+	    ko.pe (start.id+i, seed+(i*17), ctrl[i], inp[i], outp[i], zinp[i])
+	  TRUE
+	    SKIP
+      BOOL flag :
+      SEQ
+	flag := TRUE
+	WHILE flag
+	  ko.grp.in ? CASE
+	    INT i1, i2, i3 :
+	    ki.config; i1; i2; i3
+	      SKIP
+	    ki.kill
+	      SEQ
+		ko.grp.kill (ctrl, no.of.pe)
+		flag := FALSE
+	    ki.reset
+	      ko.grp.reset (ctrl, no.of.pe)
+	    ki.init
+	      ko.grp.init (ctrl, no.of.pe)
+	    [no.input]REAL32 x :
+	    [no.pe]INT z :
+	    INT no :
+	    ki.learn; x; no::z
+	      IF
+		no <> no.of.pe
+		  SKIP
+		TRUE
+		  ko.grp.learn (x, z, ctrl, inp, zinp, no.of.pe)
+	    [no.input]REAL32 x :
+	    ki.operate; x
+	      [no.pe]REAL32 y.out :
+	      SEQ
+		ko.grp.operate (x, y.out, ctrl, inp, outp, no.of.pe)
+		ko.grp.out ! ko.operate; start.id;
+			     no.of.pe::[y.out FROM 0 FOR no.of.pe]
+	    INT pe.id :
+	    [no.input]REAL32 w :
+	    ki.load; pe.id; w
+	      ko.grp.load (pe.id, w, ctrl, inp, start.id, no.of.pe)
+	    INT pe.id :
+	    ki.save; pe.id
+	      [no.input]REAL32 w :
+	      SEQ
+		ko.grp.save (pe.id, w, ctrl, outp, start.id, no.of.pe)
+		IF
+		  pe.id < 0
+		    SKIP
+		  TRUE
+		    ko.grp.out ! ko.save; pe.id; w
+	    REAL32 lr :
+	    ki.change.learning.rate; lr
+	      ko.grp.change.learning.rate (lr, ctrl, inp, no.of.pe)
+:

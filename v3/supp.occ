@@ -1,0 +1,118 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "la.inc"
+
+#USE "fdrd.t4h"
+#USE "rand.t4h"
+#USE "waitkey.t4h"
+
+PROC next.data (CHAN OF SP fs, ts, VAL [no.sample]INT32 sid,
+		INT sel, [no.input]REAL32 fdat, BYTE res)
+  SEQ
+    IF
+      sel < 0
+	sel := 0
+      sel >= no.sample
+	sel := no.sample - 1
+      TRUE
+	SKIP
+    read.float.data (fs, ts, sid[sel], fdat, res)
+    sel := sel + 1
+    IF
+      sel >= no.sample
+	sel := 0
+      TRUE
+	SKIP
+:
+
+PROC select.max.output (VAL [no.pe]REAL32 y.out, INT sel)
+  REAL32 max.val :
+  SEQ
+    sel := -1
+    max.val := 0.0 (REAL32)
+    SEQ i = 0 FOR no.pe
+      IF
+	y.out[i] > max.val
+	  SEQ
+	    sel := i
+	    max.val := y.out[i]
+	TRUE
+	  SKIP
+:
+
+PROC print.stat (CHAN OF SP fs, ts, VAL [no.pe]INT st)
+  INT sum :
+  SEQ
+    so.write.char (fs, ts, '[')
+    sum := 0
+    SEQ i = 0 FOR no.pe
+      SEQ
+	so.write.int (fs, ts, st[i], 5)
+	sum := sum + st[i]
+    so.write.char (fs, ts, ']')
+    so.write.int (fs, ts, sum, 5)
+    so.write.nl (fs, ts)
+:
+
+PROC print.count (CHAN OF SP fs, ts, INT cnt)
+  SEQ
+    IF
+      (cnt REM 100) = 0
+	SEQ
+	  so.write.int (fs, ts, cnt, 4)
+	  so.write.char (fs, ts, '*c')
+      TRUE
+	SKIP
+    cnt := cnt + 1
+:
+
+PROC show.time (CHAN OF SP fs, ts)
+  INT32 loct, utct :
+  SEQ
+    so.time (fs, ts, loct, utct)
+    so.write.string (fs, ts, "CURRENT TIME = ")
+    so.write.int (fs, ts, INT loct, 0)
+    so.write.nl (fs, ts)
+:
+
+PROC current.time (CHAN OF SP fs, ts, INT32 tm)
+  INT32 utct :
+  so.time (fs, ts, tm, utct)
+:
+
+PROC shuffle ([no.sample]INT suf, INT32 seed)
+  SEQ
+    SEQ i = 0 FOR no.sample
+      suf[i] := i
+    SEQ i = 0 FOR 10
+      INT r1, r2, t :
+      SEQ
+	r1, seed := rand (seed)
+	r2, seed := rand (seed)
+	r1 := r1 REM no.sample
+	r2 := r2 REM no.sample
+	t := suf[r1]
+	suf[r1] := suf[r2]
+	suf[r2] := t
+:
+
+PROC next.shuffled.data (CHAN OF SP fs, ts, VAL [no.sample]INT32 sid,
+			 [no.sample]INT suf, INT sel,
+			 [no.input]REAL32 fdat, BYTE res)
+  SEQ
+    IF
+      sel < 0
+	sel := 0
+      sel >= no.sample
+	sel := no.sample - 1
+      TRUE
+	SKIP
+    read.float.data (fs, ts, sid[suf[sel]], fdat, res)
+    sel := sel + 1
+    IF
+      sel >= no.sample
+	sel := 0
+      TRUE
+	SKIP
+:

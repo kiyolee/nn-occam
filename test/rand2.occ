@@ -1,0 +1,29 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+
+  PROC rand (CHAN OF SP fs, ts, INT r, INT32 seed)
+    VAL rand.gen IS #41C64E6D (INT64) :
+    VAL rand.drift IS 12345 (INT64) :
+    VAL rand.max IS #7FFF (INT64) :
+    INT64 i :
+    SEQ
+      i := ((INT64 seed) * rand.gen) + rand.drift
+      r := INT (i /\ rand.max)
+      [2]INT32 s RETYPES i :
+      SEQ
+	seed := s[0]
+  :
+
+  INT r :
+  INT32 s :
+  SEQ
+    s := 123(INT32)
+    SEQ i = 0 FOR 20
+      SEQ
+	rand (fs, ts, r, s)
+	so.write.int (fs, ts, r, 10)
+	so.write.nl (fs, ts)
+    so.exit (fs, ts, sps.success)
+:

@@ -1,0 +1,163 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#USE "rand.t4h"
+#USE "waitkey.t4h"
+
+#INCLUDE "la.inc"
+
+PROC weight.init (INT req, []REAL32 weight)
+  VAL sz IS SIZE weight :
+  IF
+    req <> 0
+      INT32 seed :
+      SEQ
+	seed := INT32 req
+	SEQ i = 0 FOR sz
+	  weight[i], seed := rand.delta (seed)
+	req := INT seed
+    TRUE
+      SEQ i = 0 FOR sz
+	weight[i] := 0.0 (REAL32)
+:
+
+PROC wait.all.input ([]CHAN OF REAL32 inp,[]REAL32 x)
+  VAL inp.sz IS SIZE inp :
+  VAL x.sz IS SIZE x :
+  IF
+    (inp.sz = x.sz) AND (inp.sz <= no.input)
+      PAR i = 0 FOR no.input
+	IF
+	  i < inp.sz
+	    inp[i] ? x[i]
+	  TRUE
+	    SKIP
+    TRUE
+      SEQ i = 0 FOR x.sz
+	x[i] := 0.0 (REAL32)
+:
+
+PROC weighted.sum (VAL []REAL32 x, VAL []REAL32 w, REAL32 sum)
+  VAL x.sz IS SIZE x :
+  VAL w.sz IS SIZE w :
+  IF
+    x.sz = w.sz
+      SEQ
+	sum := 0.0 (REAL32)
+	SEQ i = 0 FOR x.sz
+	  sum := sum + (x[i] * w[i])
+	-- IF
+	--   sum > 1.0 (REAL32)
+	--     sum := 1.0 (REAL32)
+	--   sum < (-1.0 (REAL32))
+	--     sum := (-1.0 (REAL32))
+	--   TRUE
+	--     SKIP
+    TRUE
+      sum := 0.0 (REAL32)
+:
+
+PROC learning (VAL []REAL32 x, VAL REAL32 y.dash, []REAL32 w,
+	       VAL REAL32 learning.rate)
+  VAL x.sz IS SIZE x :
+  VAL w.sz IS SIZE w :
+  IF
+    x.sz = w.sz
+      -- VAL learning.rate IS 0.05 (REAL32) :
+      REAL32 sum :
+      SEQ
+	weighted.sum (x, w, sum)
+	IF
+	  sum > 1.0 (REAL32)
+	    sum := 1.0 (REAL32)
+	  sum < (-1.0 (REAL32))
+	    sum := (-1.0 (REAL32))
+	  TRUE
+	    SKIP
+	SEQ i = 0 FOR x.sz
+	  w[i] := w[i] + ((learning.rate * (y.dash - sum)) * x[i])
+    TRUE
+      SKIP
+:
+
+PROC la.pe (VAL INT i.id,
+	    CHAN OF SP fs, ts,
+	    CHAN OF INT16 ctrl,
+	    [no.input]CHAN OF REAL32 inp,
+	    CHAN OF REAL32 outp,
+	    CHAN OF REAL32 linp)
+  INT id, seed :
+  BOOL cont :
+  [no.input]REAL32 weight :
+  VAL default.learning.rate IS 0.05 (REAL32) :
+  REAL32 learning.rate :
+  SEQ
+    id := i.id
+    learning.rate := default.learning.rate
+    INT32 loct, utct :
+    SEQ
+      so.time (fs, ts, loct, utct)
+      seed := INT loct
+    cont := TRUE
+    WHILE cont
+      INT16 cmd :
+      SEQ
+	ctrl ? cmd
+	CASE cmd
+	  la.ctrl.kill
+	    cont := FALSE
+	  la.ctrl.reset
+	    INT r :
+	    SEQ
+	      r := 0
+	      weight.init (r, weight)
+	  la.ctrl.init
+	    SEQ
+	      IF
+		seed = 0
+		  INT32 loct, utct :
+		  SEQ
+		    so.time (fs, ts, loct, utct)
+		    seed := INT loct
+		TRUE
+		  SKIP
+	      weight.init (seed, weight)
+	  la.ctrl.learn
+	    REAL32 y.dash :
+	    [no.input]REAL32 x :
+	    SEQ
+	      PAR
+		wait.all.input (inp, x)
+		linp ? y.dash
+	      learning (x, y.dash, weight, learning.rate)
+	  la.ctrl.operate
+	    REAL32 y :
+	    [no.input]REAL32 x :
+	    SEQ
+	      wait.all.input (inp, x)
+	      weighted.sum (x, weight, y)
+	      outp ! y
+	  la.ctrl.change.learning.rate
+	    linp ? learning.rate
+	  la.ctrl.load
+	    wait.all.input (inp, weight)
+	  la.ctrl.save
+	    SEQ
+	      so.write.string (fs, ts, "LA PE ID #")
+	      so.write.int (fs, ts, id, 0)
+	      so.write.nl (fs, ts)
+	      SEQ i = 0 FOR no.input
+		SEQ
+		  so.write.int (fs, ts, i, 3)
+		  so.write.string (fs, ts, ": ")
+		  so.write.real32 (fs, ts, weight[i], 0, 10)
+		  IF
+		    ((i+1) REM 3) = 0
+		      so.write.nl (fs, ts)
+		    TRUE
+		      so.write.char (fs, ts, '*t')
+	      so.write.nl (fs, ts)
+	  ELSE
+	    SKIP
+    SKIP
+:

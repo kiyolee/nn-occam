@@ -1,0 +1,140 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "tbmaths.lib"
+
+#USE "..\lib\supp.lib"
+
+#INCLUDE "la.inc"
+
+PROC weight.init (INT req, []REAL32 weight)
+  VAL sz IS SIZE weight :
+  IF
+    req <> 0
+      INT32 seed :
+      SEQ
+	seed := INT32 req
+	SEQ i = 0 FOR sz
+	  weight[i], seed := rand.delta (seed)
+	req := INT seed
+    TRUE
+      SEQ i = 0 FOR sz
+	weight[i] := 0.0 (REAL32)
+:
+
+PROC wait.all.input ([]CHAN OF REAL32 inp,[]REAL32 x)
+  VAL inp.sz IS SIZE inp :
+  VAL x.sz IS SIZE x :
+  IF
+    (inp.sz = x.sz) AND (inp.sz <= no.input)
+      PAR i = 0 FOR no.input
+	IF
+	  i < inp.sz
+	    inp[i] ? x[i]
+	  TRUE
+	    SKIP
+    TRUE
+      SEQ i = 0 FOR x.sz
+	x[i] := 0.0 (REAL32)
+:
+
+PROC weighted.sum (VAL []REAL32 x, VAL []REAL32 w, REAL32 sum)
+  VAL x.sz IS SIZE x :
+  VAL w.sz IS SIZE w :
+  IF
+    x.sz = w.sz
+      SEQ
+	sum := 0.0 (REAL32)
+	SEQ i = 0 FOR x.sz
+	  sum := sum + (x[i] * w[i])
+	-- IF
+	--   sum > 1.0 (REAL32)
+	--     sum := 1.0 (REAL32)
+	--   sum < (-1.0 (REAL32))
+	--     sum := (-1.0 (REAL32))
+	--   TRUE
+	--     SKIP
+    TRUE
+      sum := 0.0 (REAL32)
+:
+
+PROC learning (VAL []REAL32 x, VAL REAL32 y.dash, []REAL32 w,
+	       VAL REAL32 learning.rate)
+  VAL x.sz IS SIZE x :
+  VAL w.sz IS SIZE w :
+  IF
+    x.sz = w.sz
+      -- VAL learning.rate IS 0.05 (REAL32) :
+      REAL32 sum :
+      SEQ
+	weighted.sum (x, w, sum)
+	IF
+	  sum > 1.0 (REAL32)
+	    sum := 1.0 (REAL32)
+	  sum < (-1.0 (REAL32))
+	    sum := (-1.0 (REAL32))
+	  TRUE
+	    SKIP
+	SEQ i = 0 FOR x.sz
+	  w[i] := w[i] + ((learning.rate * (y.dash - sum)) * x[i])
+    TRUE
+      SKIP
+:
+
+PROC la.pe (VAL INT i.id, VAL INT iseed,
+	    CHAN OF LA.CTRL ctrl,
+	    [no.input]CHAN OF REAL32 inp,
+	    CHAN OF REAL32 outp,
+	    CHAN OF REAL32 linp)
+  INT id, seed, seed2 :
+  BOOL cont :
+  [no.input]REAL32 weight :
+  VAL default.learning.rate IS 0.05 (REAL32) :
+  REAL32 learning.rate :
+  SEQ
+    id := i.id
+    learning.rate := default.learning.rate
+    seed := iseed
+    seed2 := iseed
+    cont := TRUE
+    WHILE cont
+      ctrl ? CASE
+	lc.kill
+	  cont := FALSE
+	lc.reset
+	  INT r :
+	  SEQ
+	    r := 0
+	    weight.init (r, weight)
+	lc.init
+	  SEQ
+	    IF
+	      seed = 0
+		SEQ
+		  seed2 := seed2 + 12347
+		  seed := seed2
+	      TRUE
+		SKIP
+	    weight.init (seed, weight)
+	lc.learn
+	  REAL32 y.dash :
+	  [no.input]REAL32 x :
+	  SEQ
+	    PAR
+	      wait.all.input (inp, x)
+	      linp ? y.dash
+	    learning (x, y.dash, weight, learning.rate)
+	lc.operate
+	  REAL32 y :
+	  [no.input]REAL32 x :
+	  SEQ
+	    wait.all.input (inp, x)
+	    weighted.sum (x, weight, y)
+	    outp ! y
+	lc.change.learning.rate
+	  linp ? learning.rate
+	lc.load
+	  wait.all.input (inp, weight)
+	lc.save
+	  SEQ i = 0 FOR no.input
+	    outp ! weight[i]
+:

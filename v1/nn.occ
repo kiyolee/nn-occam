@@ -1,0 +1,29 @@
+#INCLUDE "hostio.inc"
+#INCLUDE "pe.inc"
+#USE "hostio.lib"
+#USE "pe"
+#USE "delay"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+
+  [32]CHAN OF INT32 ic :
+  [32]CHAN OF INT32 oc :
+  CHAN OF INT32 ip,op,li :
+  CHAN OF INT16 ctrl :
+
+  [2]CHAN OF SP fr.u, to.u :
+  CHAN OF BOOL mux.stopper :
+
+  SEQ
+    PAR
+      so.multiplexor (fs, ts, fr.u, to.u, mux.stopper)
+      pe (123(INT16), to.u[0], fr.u[0], ctrl, ip, op, ic, oc, li)
+      SEQ
+	so.write.string.nl (to.u[1], fr.u[1], "start")
+	delay (10000)
+	ctrl ! pe.cmd.quit
+	so.write.string.nl (to.u[1], fr.u[1], "end")
+	delay (1000)
+	mux.stopper ! TRUE
+    so.exit (fs, ts, sps.success)
+:

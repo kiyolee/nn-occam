@@ -1,0 +1,76 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "convert.lib"
+
+PROC fread.item (CHAN OF SP fs, ts, VAL INT32 sid, INT rlen, []BYTE rbuf)
+  INT len :
+  [1]BYTE buf :
+  BOOL cont :
+  SEQ
+    len := 1
+    cont := TRUE
+    WHILE cont
+      SEQ
+	so.read (fs, ts, sid, len, buf)
+	IF
+	  (len = 1) AND ((buf[0] = ' ') OR (buf[0] = '*t') OR
+			 (buf[0] = '*c') OR (buf[0] = '*n'))
+	    SKIP
+	  TRUE
+	    cont := FALSE
+    IF
+      len = 1
+	INT cnt :
+	SEQ
+	  cnt := 0
+	  cont := TRUE
+	  WHILE cont AND (cnt < rlen)
+	    INT32 pos :
+	    BYTE res :
+	    SEQ
+	      rbuf[cnt] := buf[0]
+	      cnt := cnt + 1
+	      so.tell (fs, ts, sid, pos, res)
+	      so.read (fs, ts, sid, len, buf)
+	      IF
+		(len = 1) AND ((buf[0] <> ' ') AND (buf[0] <> '*t') AND
+			       (buf[0] <> '*c') AND (buf[0] <> '*n'))
+		  SKIP
+		TRUE
+		  SEQ
+		    IF
+		      (len = 1) AND (res = spr.ok)
+			so.seek (fs, ts, sid, pos, spo.start, res)
+		      TRUE
+			SKIP
+		    cont := FALSE
+	  IF
+	    cnt < rlen
+	      rbuf[cnt] := 0 (BYTE)
+	    TRUE
+	      SKIP
+	  rlen := cnt
+      TRUE
+	SEQ
+	  IF
+	    rlen > 0
+	      rbuf[0] := 0 (BYTE)
+	    TRUE
+	      SKIP
+	  rlen := 0
+:
+
+PROC fread.real32 (CHAN OF SP fs, ts, VAL INT32 sid, REAL32 n, BOOL err)
+  INT len :
+  [256]BYTE buf :
+  SEQ
+    len := 256
+    fread.item (fs, ts, sid, len, buf)
+    IF
+      len > 0
+	SEQ
+	  buf[255] := 0 (BYTE)
+	  STRINGTOREAL32 (err, n, buf)
+      TRUE
+	err := FALSE
+:

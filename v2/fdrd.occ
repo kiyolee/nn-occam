@@ -1,0 +1,79 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "string.lib"
+
+#INCLUDE "la.inc"
+
+PROC open.float.data (CHAN OF SP fs, ts, VAL INT n, INT32 sid, BYTE res)
+  IF
+    (n < 1) OR (n > no.sample)
+      SEQ
+	sid := -1 (INT32)
+	res := spr.operation.failed
+    TRUE
+      [40]BYTE fn :
+      INT len :
+      SEQ
+	len := 0
+	--  append.text (len, fn, "..\lpc\f_")
+	append.text (len, fn, "e:\lpc\f_")
+	append.int (len, fn, n / 10, 1)
+	append.int (len, fn, n REM 10, 1)
+	append.text (len, fn, ".bin")
+	append.char (len, fn, 0 (BYTE))
+	--  so.write.string.nl (fs, ts, fn)
+	--  BYTE key, result :
+	--  so.getkey (fs, ts, key, result)
+	so.open (fs, ts, fn, spt.binary, spm.input, sid, res)
+	IF
+	  res <> spr.ok
+	    sid := -1 (INT32)
+	  TRUE
+	    SKIP
+:
+
+PROC read.float.data (CHAN OF SP fs, ts, VAL INT32 sid,
+		      [no.input]REAL32 fdat, BYTE res)
+  INT len :
+  VAL SZ.REAL32 IS 4 :
+  SEQ
+    len := no.input * SZ.REAL32
+    [no.input * SZ.REAL32]BYTE b RETYPES fdat :
+    so.read (fs, ts, sid, len, b)
+    IF
+      len = (no.input * SZ.REAL32)
+	res := spr.ok
+      TRUE
+	res := spr.operation.failed
+:
+
+PROC close.float.data (CHAN OF SP fs, ts, VAL INT32 sid, BYTE res)
+  SEQ
+    so.close (fs, ts, sid, res)
+:
+
+PROC open.all.float.data (CHAN OF SP fs, ts,
+			  [no.sample]INT32 sid, [no.sample]BYTE res,
+			  BOOL success)
+  SEQ
+    success := TRUE
+    SEQ i = 0 FOR no.sample
+      SEQ
+	open.float.data (fs, ts, i+1, sid[i], res[i])
+	success := success AND (res[i] = spr.ok)
+:
+
+PROC close.all.float.data (CHAN OF SP fs, ts,
+			   VAL [no.sample]INT32 sid, [no.sample]BYTE res,
+			   BOOL success)
+  SEQ
+    success := TRUE
+    SEQ i = 0 FOR no.sample
+      IF
+	res[i] = spr.ok
+	  SEQ
+	    close.float.data (fs, ts, sid[i], res[i])
+	    success := success AND (res[i] = spr.ok)
+	TRUE
+	  SKIP
+:

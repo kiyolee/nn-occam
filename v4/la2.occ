@@ -1,0 +1,342 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "string.lib"
+
+#USE "..\lib\supp.lib"
+
+#INCLUDE "la2.inc"
+#USE "lape.t4h"
+#USE "lagrp.t4h"
+
+PROC la.learn (CHAN OF LA.LINK.IN la.1.out, la.p.out,
+	       VAL [no.input]REAL32 x.in,
+	       VAL [no.pe]REAL32 y.out)
+  PAR
+    la.1.out ! li.learn; x.in;
+	       no.pe.part1::[y.out FROM 0 FOR no.pe.part1]
+    la.p.out ! li.learn; x.in;
+	       no.pe.part2::[y.out FROM no.pe.part1 FOR no.pe.part2]
+:
+
+PROC la.operate (CHAN OF LA.LINK.IN la.1.out, la.p.out,
+		 CHAN OF LA.LINK.OUT la.1.in, la.p.in,
+		 VAL [no.input]REAL32 x.in,
+		 [no.pe]REAL32 y.out,
+		 INT sel)
+  SEQ
+    PAR
+      la.1.out ! li.operate; x.in
+      la.p.out ! li.operate; x.in
+      INT start.id, no :
+      la.1.in ? CASE lo.operate; start.id;
+		no::[y.out FROM 0 FOR no.pe.part1]
+      INT start.id, no :
+      la.p.in ? CASE lo.operate; start.id;
+		no::[y.out FROM no.pe.part1 FOR no.pe.part2]
+    select.max.output (y.out, sel)
+:
+
+PROC la.init (CHAN OF LA.LINK.IN la.1.out, la.p.out)
+  PAR
+    la.1.out ! li.init
+    la.p.out ! li.init
+:
+
+PROC la.kill (CHAN OF LA.LINK.IN la.1.out, la.p.out)
+  PAR
+    la.1.out ! li.kill
+    la.p.out ! li.kill
+:
+
+PROC la.change.learning.rate (CHAN OF LA.LINK.IN la.1.out, la.p.out,
+			      VAL REAL32 lr)
+  PAR
+    la.1.out ! li.change.learning.rate; lr
+    la.p.out ! li.change.learning.rate; lr
+:
+
+PROC la.save (CHAN OF SP fs, ts,
+	      CHAN OF LA.LINK.IN la.1.out, la.p.out,
+	      CHAN OF LA.LINK.OUT la.1.in, la.p.in,
+	      VAL []BYTE fn, BYTE res)
+  INT32 sid :
+  INT cpos :
+  SEQ
+    cpos := char.pos (0 (BYTE), fn)
+    IF
+      cpos < 0
+	cpos := SIZE fn
+      TRUE
+	SKIP
+    so.write.string (fs, ts, "SAVING *"")
+    so.write.string (fs, ts, [fn FROM 0 FOR cpos])
+    so.write.string (fs, ts, "*" ")
+    so.open (fs, ts, fn, spt.binary, spm.output, sid, res)
+    IF
+      res = spr.ok
+	BOOL ok :
+	SEQ
+	  ok := TRUE
+	  SEQ i = 0 FOR no.pe
+	    IF
+	      ok
+		[no.input]REAL32 weight :
+		INT len :
+		VAL SZ.REAL32 IS 4 :
+		SEQ
+		  IF
+		    i < no.pe.part1
+		      SEQ
+			la.1.out ! li.save; i
+			INT n :
+			la.1.in ? CASE lo.save; n; weight
+		    TRUE
+		      SEQ
+			la.p.out ! li.save; i
+			INT n :
+			la.p.in ? CASE lo.save; n; weight
+		  len := no.input * SZ.REAL32
+		  [no.input * SZ.REAL32]BYTE b RETYPES weight :
+		  so.write (fs, ts, sid, b, len)
+		  ok := (len = (no.input * SZ.REAL32))
+	      TRUE
+		SKIP
+	  so.close (fs, ts, sid, res)
+	  IF
+	    NOT ok
+	      SEQ
+		res := spr.operation.failed
+		so.write.string.nl (fs, ts, "FAILED")
+	    TRUE
+	      so.write.string.nl (fs, ts, "SUCCESS")
+      TRUE
+	so.write.string.nl (fs, ts, "FAILED")
+:
+
+PROC la.load (CHAN OF SP fs, ts,
+	      CHAN OF LA.LINK.IN la.1.out, la.p.out,
+	      VAL []BYTE fn, BYTE res)
+  INT32 sid :
+  INT cpos :
+  SEQ
+    cpos := char.pos (0 (BYTE), fn)
+    IF
+      cpos < 0
+	cpos := SIZE fn
+      TRUE
+	SKIP
+    so.write.string (fs, ts, "LOADING *"")
+    so.write.string (fs, ts, [fn FROM 0 FOR cpos])
+    so.write.string (fs, ts, "*" ")
+    so.open (fs, ts, fn, spt.binary, spm.input, sid, res)
+    IF
+      res = spr.ok
+	BOOL ok :
+	SEQ
+	  ok := TRUE
+	  SEQ i = 0 FOR no.pe
+	    IF
+	      ok
+		[no.input]REAL32 weight :
+		INT len :
+		VAL SZ.REAL32 IS 4 :
+		SEQ
+		  len := no.input * SZ.REAL32
+		  [no.input * SZ.REAL32]BYTE b RETYPES weight :
+		  so.read (fs, ts, sid, len, b)
+		  ok := (len = (no.input * SZ.REAL32))
+		  IF
+		    ok
+		      IF
+			i < no.pe.part1
+			  la.1.out ! li.load; i; weight
+			TRUE
+			  la.p.out ! li.load; i; weight
+		    TRUE
+		      SKIP
+	      TRUE
+		SKIP
+	  so.close (fs, ts, sid, res)
+	  IF
+	    NOT ok
+	      SEQ
+		res := spr.operation.failed
+		so.write.string.nl (fs, ts, "FAILED")
+	    TRUE
+	      so.write.string.nl (fs, ts, "SUCCESS")
+      TRUE
+	so.write.string.nl (fs, ts, "FAILED")
+:
+
+PROC training (CHAN OF SP fs, ts,
+	       CHAN OF LA.LINK.IN la.1.out, la.p.out)
+  INT32 sid :
+  BYTE res :
+  SEQ
+    open.train.data (fs, ts, sid, res)
+    IF
+      res = spr.ok
+	INT32 s :
+	INT sel, cnt :
+	[no.input]REAL32 x.in :
+	[no.pe]REAL32 y.out :
+	SEQ
+	  so.write.string.nl (fs, ts, "START TRAINING")
+	  cnt := 1
+	  res := spr.ok
+	  WHILE res = spr.ok
+	    SEQ
+	      next.train.data (fs, ts, sid, s, [x.in FROM 0 FOR no.input-1],
+			       132, 10, 0, 11, 1, 10, res)
+	      sel := (INT s) - 1
+	      IF
+		res = spr.ok
+		  SEQ
+		    print.count (fs, ts, cnt, 100)
+		    x.in[no.input-1] := 1.0 (REAL32)
+		    SEQ i = 0 FOR no.pe
+		      IF
+			i = sel
+			  y.out[i] := 1.0 (REAL32)
+			TRUE
+			  y.out[i] := -1.0 (REAL32)
+		    la.learn (la.1.out, la.p.out, x.in, y.out)
+		TRUE -- read data error
+		  SKIP
+      TRUE -- NOT success
+	SKIP
+    so.write.nl (fs, ts)
+    close.train.data (fs, ts, sid, res)
+:
+
+PROC testing (CHAN OF SP fs, ts,
+	      CHAN OF LA.LINK.IN la.1.out, la.p.out,
+	      CHAN OF LA.LINK.OUT la.1.in, la.p.in)
+  INT32 sid :
+  BYTE res :
+  SEQ
+    open.train.data (fs, ts, sid, res)
+    IF
+      res = spr.ok
+	INT32 s :
+	INT sel, msel, cnt :
+	[no.input]REAL32 x.in :
+	[no.pe]REAL32 y.out :
+	[no.pe]INT right, wrong, wrong.match :
+	SEQ
+	  so.write.string.nl (fs, ts, "START TESTING")
+	  SEQ i = 0 FOR no.pe
+	    SEQ
+	      right[i] := 0
+	      wrong[i] := 0
+	      wrong.match[i] := 0
+	  cnt := 1
+	  res := spr.ok
+	  WHILE res = spr.ok
+	    SEQ
+	      next.train.data (fs, ts, sid, s, [x.in FROM 0 FOR no.input-1],
+			       132, 10, 0, 11, 1, 10, res)
+	      sel := (INT s) - 1
+	      IF
+		res = spr.ok
+		  SEQ
+		    print.count (fs, ts, cnt, 100)
+		    x.in[no.input-1] := 1.0 (REAL32)
+		    la.operate (la.1.out, la.p.out, la.1.in, la.p.in,
+				x.in, y.out, msel)
+		    IF
+		      sel <> msel
+			SEQ
+			  wrong[sel] := wrong[sel] + 1
+			  wrong.match[msel] := wrong.match[msel] + 1
+		      TRUE
+			right[sel] := right[sel] + 1
+		TRUE -- read data error
+		  SKIP
+	  so.write.nl (fs, ts)
+	  print.stat (fs, ts, right)
+	  print.stat (fs, ts, wrong)
+	  print.stat (fs, ts, wrong.match)
+      TRUE -- NOT success
+	SKIP
+    so.write.nl (fs, ts)
+    close.train.data (fs, ts, sid, res)
+:
+
+PROC linear.associator (CHAN OF SP fs, ts,
+			CHAN OF LA.LINK.IN la.p.out,
+			CHAN OF LA.LINK.OUT la.p.in,
+			VAL BOOL init.load,
+			VAL []BYTE init.file,
+			VAL REAL32 lr,
+			VAL INT no.period,
+			VAL INT no.period.per.test,
+			VAL INT no.period.per.save,
+			VAL []BYTE save.prefix)
+  CHAN OF LA.LINK.IN la.1.out :
+  CHAN OF LA.LINK.OUT la.1.in :
+  PAR
+    la.group (la.1.out, la.1.in)
+    BYTE res :
+    INT32 seed :
+    SEQ
+      current.time (fs, ts, seed)
+      la.1.out ! li.config; no.pe.part1; 0; INT seed
+      la.p.out ! li.config; no.pe.part2; no.pe.part1; ((INT seed) + 23459)
+      IF
+	init.load
+	  SEQ
+	    la.load (fs, ts, la.1.out, la.p.out, init.file, res)
+	    IF
+	      res <> spr.ok
+		la.init (la.1.out, la.p.out)
+	      TRUE
+		SKIP
+	TRUE
+	  la.init (la.1.out, la.p.out)
+      so.write.str.real32.nl (fs, ts, "LEARNING RATE = ", lr, 0, 0)
+      la.change.learning.rate (la.1.out, la.p.out, lr)
+      so.write.str.int.nl (fs, ts, "NO OF TRAINING PERIOD = ", no.period, 0)
+      SEQ i = 1 FOR no.period
+	SEQ
+	  show.time.int (fs, ts, i, 3)
+	  training (fs, ts, la.1.out, la.p.out)
+	  IF
+	    (no.period.per.test > 0) AND ((i REM no.period.per.test) = 0)
+	      SEQ
+		show.time.int (fs, ts, i, 3)
+		testing (fs, ts, la.1.out, la.p.out, la.1.in, la.p.in)
+	    TRUE
+	      SKIP
+	  IF
+	    (no.period.per.save > 0) AND ((i REM no.period.per.save) = 0)
+	      [120]BYTE fn :
+	      SEQ
+		gen.filename (fn, save.prefix, ".bin", i, 3)
+		la.save (fs, ts, la.1.out, la.p.out, la.1.in, la.p.in,
+			 fn, res)
+	    TRUE
+	      SKIP
+      IF
+	(no.period.per.test = 0) OR
+	    ((no.period.per.test > 0) AND
+		((no.period REM no.period.per.test) <> 0))
+	  SEQ
+	    show.time.int (fs, ts, no.period, 3)
+	    testing (fs, ts, la.1.out, la.p.out, la.1.in, la.p.in)
+	TRUE
+	  SKIP
+      show.time (fs, ts)
+      IF
+	(no.period.per.save = 0) OR
+	    ((no.period.per.save > 0) AND
+		((no.period REM no.period.per.save) <> 0))
+	  [120]BYTE fn :
+	  SEQ
+	    gen.filename (fn, save.prefix, ".bin", no.period, 3)
+	    la.save (fs, ts, la.1.out, la.p.out, la.1.in, la.p.in,
+		     fn, res)
+	TRUE
+	  SKIP
+      la.kill (la.1.out, la.p.out)
+:

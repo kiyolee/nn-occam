@@ -1,0 +1,11 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "ko.inc"
+#USE "kogrp.t4h"
+
+PROC ko.group.loop (CHAN OF KO.LINK.IN ko.grp.in,
+		    CHAN OF KO.LINK.OUT ko.grp.out)
+  WHILE TRUE
+    ko.group (ko.grp.in, ko.grp.out)
+:

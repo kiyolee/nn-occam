@@ -1,0 +1,43 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+
+  INT, INT32 FUNCTION rand (VAL INT32 seed)
+    VAL rand.gen IS #41C64E6D (INT64) :
+    VAL rand.drift IS 12345 (INT64) :
+    VAL rand.max IS #7FFF (INT64) :
+    INT r :
+    INT64 i :
+    INT32 t :
+    VALOF
+      SEQ
+	i := ((INT64 seed) * rand.gen) + rand.drift
+	r := INT (i /\ rand.max)
+	[2]INT32 s RETYPES i :
+	SEQ
+	  t := s[0]
+      RESULT r, t
+  :
+
+  INT r, seed :
+  INT32 s :
+  BOOL err :
+  SEQ
+    so.write.string (fs, ts, "SEED? ")
+    so.read.echo.int (fs, ts, seed, err)
+    so.write.nl (fs, ts)
+    IF
+      NOT err
+	SEQ
+	  s := INT32 seed
+	  SEQ i = 0 FOR 20
+	    SEQ
+	      r, s := rand (s)
+	      so.write.int (fs, ts, r, 10)
+	      so.write.nl (fs, ts)
+      TRUE
+	SEQ
+	  so.write.string.nl (fs, ts, "INVALID SEED")
+    so.exit (fs, ts, sps.success)
+:

@@ -1,0 +1,74 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+PROC open.train.data (CHAN OF SP fs, ts, INT32 sid, BYTE res)
+  VAL fn.len IS 40 :
+  [fn.len]BYTE fn :
+  INT ge.len :
+  BYTE ge.res :
+  SEQ
+    so.getenv (fs, ts, "TRAINFILE", ge.len, fn, ge.res)
+    IF
+      ge.res = spr.ok
+	so.open (fs, ts, [fn FROM 0 FOR ge.len], spt.binary, spm.input,
+		 sid, res)
+      TRUE
+	res := spr.operation.failed
+    IF
+      res <> spr.ok
+	sid := -1 (INT32)
+      TRUE
+	SKIP
+:
+
+PROC close.train.data (CHAN OF SP fs, ts, VAL INT32 sid, BYTE res)
+  SEQ
+    so.close (fs, ts, sid, res)
+:
+
+PROC next.train.data (CHAN OF SP fs, ts, VAL INT32 sid,
+		      INT32 class,
+		      []REAL32 fdat,
+		      VAL INT src.size,
+			      des.row.size, des.row.offset,
+			      src.row.size, src.row.offset,
+			      copy.size,
+		      BYTE res)
+  VAL max.src.size IS 160 :
+  SEQ
+    res := spr.operation.failed
+    IF
+      (src.size <= max.src.size) AND (src.size > 0)
+	VAL SZ.INT32 IS 4 :
+	INT len :
+	SEQ
+	  len := SZ.INT32
+	  [SZ.INT32]BYTE b RETYPES class :
+	  so.read (fs, ts, sid, len, b)
+	  IF
+	    len = SZ.INT32
+	      VAL SZ.REAL32 IS 4 :
+	      VAL read.len IS src.size * SZ.REAL32 :
+	      [max.src.size]REAL32 tf :
+	      SEQ
+		len := read.len
+		[max.src.size * SZ.REAL32]BYTE b RETYPES tf :
+		so.read (fs, ts, sid, len, [b FROM 0 FOR read.len])
+		IF
+		  len = read.len
+		    SEQ
+		      VAL fdat.size IS SIZE fdat :
+		      VAL no.row IS (fdat.size/des.row.size) :
+		      SEQ i = 0 FOR no.row
+			VAL des.offset IS (i*des.row.size)+des.row.offset :
+			VAL src.offset IS (i*src.row.size)+src.row.offset :
+			[fdat FROM des.offset FOR copy.size] :=
+			    [tf FROM src.offset FOR copy.size]
+		      res := spr.ok
+		  TRUE
+		    SKIP
+	    TRUE
+	      SKIP
+      TRUE
+	SKIP
+:

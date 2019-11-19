@@ -1,0 +1,10 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#USE "nn.t4h"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+  SEQ
+    linear.associator (fs, ts, 0.03 (REAL32), 1, TRUE, FALSE)
+    so.exit (fs, ts, sps.success)
+:

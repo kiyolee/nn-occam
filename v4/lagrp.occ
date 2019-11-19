@@ -1,0 +1,224 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "la.inc"
+#USE "lape.t4h"
+
+PROC wait.for.la.config (CHAN OF LA.LINK.IN la.grp.in,
+			 INT no.of.pe, start.id, seed)
+  BOOL flag :
+  SEQ
+    flag := TRUE
+    WHILE flag
+      la.grp.in ? CASE
+	li.config; no.of.pe; start.id; seed
+	  IF
+	    (no.of.pe <= 0) OR (no.of.pe > no.pe) OR
+		(start.id < 0) OR (seed = 0)
+	      SKIP
+	    TRUE
+	      flag := FALSE
+	li.kill
+	  SKIP
+	li.reset
+	  SKIP
+	li.init
+	  SKIP
+	[no.input]REAL32 r1 :
+	[no.pe]REAL32 r2 :
+	INT i :
+	li.learn; r1; i::r2
+	  SKIP
+	[no.input]REAL32 r :
+	li.operate; r
+	  SKIP
+	INT i :
+	[no.input]REAL32 r :
+	li.load; i; r
+	  SKIP
+	INT i :
+	li.save; i
+	  SKIP
+	REAL32 r :
+	li.change.learning.rate; r
+	  SKIP
+:
+
+PROC la.grp.kill ([no.pe]CHAN OF LA.CTRL ctrl, VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	ctrl[i] ! lc.kill
+      TRUE
+	SKIP
+:
+
+PROC la.grp.reset ([no.pe]CHAN OF LA.CTRL ctrl, VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	ctrl[i] ! lc.reset
+      TRUE
+	SKIP
+:
+
+PROC la.grp.init ([no.pe]CHAN OF LA.CTRL ctrl, VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	ctrl[i] ! lc.init
+      TRUE
+	SKIP
+:
+
+PROC la.grp.learn (VAL [no.input]REAL32 x.in,
+		   VAL [no.pe]REAL32 y.out,
+		   [no.pe]CHAN OF LA.CTRL ctrl,
+		   [no.pe][no.input]CHAN OF REAL32 inp,
+		   [no.pe]CHAN OF REAL32 linp,
+		   VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	SEQ
+	  ctrl[i] ! lc.learn
+	  PAR
+	    PAR j = 0 FOR no.input
+	      inp[i][j] ! x.in[j]
+	    linp[i] ! y.out[i]
+      TRUE
+	SKIP
+:
+
+PROC la.grp.operate (VAL [no.input]REAL32 x.in,
+		     [no.pe]REAL32 y.out,
+		     [no.pe]CHAN OF LA.CTRL ctrl,
+		     [no.pe][no.input]CHAN OF REAL32 inp,
+		     [no.pe]CHAN OF REAL32 outp,
+		     VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	SEQ
+	  ctrl[i] ! lc.operate
+	  PAR j = 0 FOR no.input
+	    inp[i][j] ! x.in[j]
+	  outp[i] ? y.out[i]
+      TRUE
+	SKIP
+:
+
+PROC la.grp.load (VAL INT pe.id, VAL [no.input]REAL32 weight,
+		  [no.pe]CHAN OF LA.CTRL ctrl,
+		  [no.pe][no.input]CHAN OF REAL32 inp,
+		  VAL INT start.id, VAL INT no.of.pe)
+  INT no :
+  SEQ
+    no := pe.id - start.id
+    IF
+      (no < 0) OR (no >= no.of.pe)
+	SKIP
+      TRUE
+	SEQ
+	  ctrl[no] ! lc.load
+	  inp.alias IS inp[no] :
+	  PAR j = 0 FOR no.input
+	    inp.alias[j] ! weight[j]
+:
+
+PROC la.grp.save (INT pe.id, [no.input]REAL32 weight,
+		  [no.pe]CHAN OF LA.CTRL ctrl,
+		  [no.pe]CHAN OF REAL32 outp,
+		  VAL INT start.id, VAL INT no.of.pe)
+  INT no :
+  SEQ
+    no := pe.id - start.id
+    IF
+      (no < 0) OR (no >= no.of.pe)
+	pe.id := -1
+      TRUE
+	SEQ
+	  ctrl[no] ! lc.save
+	  SEQ j = 0 FOR no.input
+	    outp[no] ? weight[j]
+:
+
+PROC la.grp.change.learning.rate (VAL REAL32 lr,
+				  [no.pe]CHAN OF LA.CTRL ctrl,
+				  [no.pe]CHAN OF REAL32 linp,
+				  VAL INT no.of.pe)
+  PAR i = 0 FOR no.pe
+    IF
+      i < no.of.pe
+	SEQ
+	  ctrl[i] ! lc.change.learning.rate
+	  linp[i] ! lr
+      TRUE
+	SKIP
+:
+
+PROC la.group (CHAN OF LA.LINK.IN la.grp.in, CHAN OF LA.LINK.OUT la.grp.out)
+  INT no.of.pe, start.id, seed :
+  SEQ
+    wait.for.la.config (la.grp.in, no.of.pe, start.id, seed)
+    [no.pe]CHAN OF LA.CTRL ctrl :
+    [no.pe][no.input]CHAN OF REAL32 inp :
+    [no.pe]CHAN OF REAL32 outp :
+    [no.pe]CHAN OF REAL32 linp :
+    PAR
+      PAR i = 0 FOR no.pe
+	IF
+	  i < no.of.pe
+	    la.pe (start.id+i, seed+(i*17), ctrl[i], inp[i], outp[i], linp[i])
+	  TRUE
+	    SKIP
+      BOOL flag :
+      SEQ
+	flag := TRUE
+	WHILE flag
+	  la.grp.in ? CASE
+	    INT i1, i2, i3 :
+	    li.config; i1; i2; i3
+	      SKIP
+	    li.kill
+	      SEQ
+		la.grp.kill (ctrl, no.of.pe)
+		flag := FALSE
+	    li.reset
+	      la.grp.reset (ctrl, no.of.pe)
+	    li.init
+	      la.grp.init (ctrl, no.of.pe)
+	    [no.input]REAL32 x :
+	    [no.pe]REAL32 y.dash :
+	    INT no :
+	    li.learn; x; no::y.dash
+	      IF
+		no <> no.of.pe
+		  SKIP
+		TRUE
+		  la.grp.learn (x, y.dash, ctrl, inp, linp, no.of.pe)
+	    [no.input]REAL32 x :
+	    li.operate; x
+	      [no.pe]REAL32 y.out :
+	      SEQ
+		la.grp.operate (x, y.out, ctrl, inp, outp, no.of.pe)
+		la.grp.out ! lo.operate; start.id;
+			     no.of.pe::[y.out FROM 0 FOR no.of.pe]
+	    INT pe.id :
+	    [no.input]REAL32 w :
+	    li.load; pe.id; w
+	      la.grp.load (pe.id, w, ctrl, inp, start.id, no.of.pe)
+	    INT pe.id :
+	    li.save; pe.id
+	      [no.input]REAL32 w :
+	      SEQ
+		la.grp.save (pe.id, w, ctrl, outp, start.id, no.of.pe)
+		IF
+		  pe.id < 0
+		    SKIP
+		  TRUE
+		    la.grp.out ! lo.save; pe.id; w
+	    REAL32 lr :
+	    li.change.learning.rate; lr
+	      la.grp.change.learning.rate (lr, ctrl, linp, no.of.pe)
+:

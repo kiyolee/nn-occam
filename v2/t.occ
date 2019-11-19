@@ -1,0 +1,16 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "rand.t4h"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+  INT32 seed :
+  REAL32 r :
+  SEQ
+    seed := 12345(INT32)
+    SEQ i = 0 FOR 20
+      SEQ
+	r, seed := rand.delta (seed)
+	so.write.real32 (fs, ts, r, 0, 0)
+	so.write.nl (fs, ts)
+    so.exit (fs, ts, sps.success)
+:

@@ -1,0 +1,23 @@
+#USE "tbmaths.lib"
+
+INT, INT32 FUNCTION rand (VAL INT32 seed)
+  INT no :
+  INT32 i :
+  REAL32 r :
+  VALOF
+    SEQ
+      r, i := RAN (seed)
+      no := INT (i /\ #7FFF (INT32))
+    RESULT no, i
+:
+
+REAL32, INT32 FUNCTION rand.delta (VAL INT32 seed)
+  VAL rand.delta.step IS 0.000001 (REAL32) :
+  INT32 i, j :
+  REAL32 r, res :
+  VALOF
+    SEQ
+      r, i := RAN (seed)
+      res := INT32TOREAL32 (0, INT (i /\ #7F (INT32))) * rand.delta.step
+    RESULT res, i
+:

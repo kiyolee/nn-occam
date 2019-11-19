@@ -1,0 +1,13 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "bpn.inc"
+#USE "bpn.t4h"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+  SEQ
+    so.write.string.nl (fs, ts, "START")
+    back.propagation.network (fs, ts)
+    so.write.string.nl (fs, ts, "END")
+    so.exit (fs, ts, sps.success)
+:

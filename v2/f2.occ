@@ -1,0 +1,34 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "freadi.t4h"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+  INT32 sid :
+  BYTE res :
+  SEQ
+    so.open (fs, ts, "D_01.TXT", spt.text, spm.input, sid, res)
+    IF
+      res = spr.ok
+	INT cnt :
+	BOOL cont :
+	SEQ
+	  cnt := 0
+	  cont := TRUE
+	  WHILE cont
+	    REAL32 r :
+	    SEQ
+	      fread.real32 (fs, ts, sid, r, cont)
+	      IF
+		cont
+		  SEQ
+		    cnt := cnt + 1
+		    so.write.int (fs, ts, cnt, 4)
+		    so.write.string (fs, ts, ": ")
+		    so.write.real32 (fs, ts, r, 0, 0)
+		    so.write.nl (fs, ts)
+		TRUE
+		  SKIP
+      TRUE
+	so.write.string.nl (fs, ts, "open file error!")
+    so.exit (fs, ts, sps.success)
+:

@@ -1,0 +1,13 @@
+--
+-- Version 2.70, 14th April 1989
+--
+-- linker command file "lagrpl.l4h"
+--
+lagrpl.t4h
+hostio.lib
+convert.lib
+lagrp.t4h
+lape.t4h
+tbmaths.lib
+..\lib\supp.lib
+occambh.lib

@@ -1,0 +1,17 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "ko.inc"
+#USE "ko2.t4h"
+
+PROC main (CHAN OF SP fs, ts,
+	   CHAN OF KO.LINK.OUT ko.p.in,
+	   CHAN OF KO.LINK.IN ko.p.out)
+  SEQ
+    so.write.string.nl (fs, ts, "START")
+    kohonen.layer (fs, ts, ko.p.out, ko.p.in,
+		   TRUE, "init.bin",
+		   0.05 (REAL32), 50, 5, 5, "01")
+    so.write.string.nl (fs, ts, "END")
+    so.exit (fs, ts, sps.success)
+:

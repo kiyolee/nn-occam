@@ -1,0 +1,17 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "la.inc"
+#USE "la.t4h"
+
+PROC main (CHAN OF SP fs, ts,
+	   CHAN OF LA.LINK.OUT la.p.in,
+	   CHAN OF LA.LINK.IN la.p.out)
+  SEQ
+    so.write.string.nl (fs, ts, "START")
+    linear.associator (fs, ts, la.p.out, la.p.in,
+		       FALSE, "",
+		       0.03 (REAL32), 1, 0, -1, "")
+    so.write.string.nl (fs, ts, "END")
+    so.exit (fs, ts, sps.success)
+:

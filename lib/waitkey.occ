@@ -1,0 +1,17 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+PROC wait.key (CHAN OF SP fs, ts, BYTE key)
+  IF
+    key = #1B (BYTE)
+      SKIP
+    TRUE
+      BYTE result :
+      SEQ
+	so.getkey (fs, ts, key, result)
+	IF
+	  result <> spr.ok
+	    key := 0 (BYTE)
+	  TRUE
+	    SKIP
+:

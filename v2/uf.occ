@@ -1,0 +1,56 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "fdrd.t4h"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+
+  PROC display.float (CHAN OF SP fs, ts, [132]REAL32 fd)
+    SEQ
+      SEQ i = 0 FOR 12
+	VAL j.lim IS 4 : -- max 11
+	SEQ j = 0 FOR j.lim
+	  SEQ
+	    so.write.real32 (fs, ts, fd[(i*11)+j], 0, 10)
+	    IF
+	      j < (j.lim - 1)
+		so.write.char (fs, ts, ' ')
+	      TRUE
+		so.write.char (fs, ts, '*n')
+      VAL no.nl IS 1 : -- org 3
+      SEQ i = 0 FOR no.nl
+	so.write.char (fs, ts, '*n')
+  :
+
+  INT32 sid :
+  BYTE res :
+  SEQ
+    SEQ i = 1 FOR 10
+      SEQ
+	so.write.string (fs, ts, "FILE #")
+	so.write.int (fs, ts, i, 2)
+	open.float.data (fs, ts, i, sid, res)
+	IF
+	  res = spr.ok
+	    INT cnt :
+	    SEQ
+	      so.write.string.nl (fs, ts, " OK*n")
+	      cnt := 0
+	      WHILE res = spr.ok
+		[132]REAL32 fd :
+		SEQ
+		  read.float.data (fs, ts, sid, fd, res)
+		  IF
+		    res = spr.ok
+		      SEQ
+			cnt := cnt + 1
+			so.write.string (fs, ts, "SAMPLE #")
+			so.write.int (fs, ts, cnt, 3)
+			so.write.nl (fs, ts)
+			display.float (fs, ts, fd)
+		    TRUE
+		      SKIP
+	      close.float.data (fs, ts, sid, res)
+	  TRUE
+	    so.write.string.nl (fs, ts, " FAIL")
+    so.exit (fs, ts, sps.success)
+:

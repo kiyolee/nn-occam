@@ -1,0 +1,25 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "string.lib"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+  VAL msg IS "hello" :
+  [40]BYTE buf :
+  INT len :
+  SEQ
+    so.write.int (fs, ts, SIZE msg, 5)
+    so.write.nl (fs, ts)
+    so.write.string.nl (fs, ts, msg)
+    [buf FROM 0 FOR SIZE msg] := [msg FROM 0 FOR SIZE msg]
+    --buf[5] := 0 (BYTE)
+    so.write.int (fs, ts, SIZE buf, 5)
+    so.write.nl (fs, ts)
+    so.write.string.nl (fs, ts, buf)
+    len := 5
+    append.int (len, buf, 10, 4)
+    append.char (len, buf, 0 (BYTE))
+    so.write.int (fs, ts, len, 5)
+    so.write.nl (fs, ts)
+    so.write.string.nl (fs, ts, buf)
+    so.exit(fs, ts, sps.success)
+:

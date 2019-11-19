@@ -1,0 +1,85 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "bpn.inc"
+
+PROC connect (CHAN OF REAL32 in, out, CHAN OF BOOL ctrl)
+  BOOL flag :
+  SEQ
+    flag := TRUE
+    WHILE flag
+      PRI ALT
+	REAL32 r :
+	in ? r
+	  out ! r
+	ctrl ? flag
+	  SKIP
+:
+
+PROC cross.connect.oi ([no.hidden.pe][no.output.pe]CHAN OF REAL32 h.outp,
+		       [no.output.pe][no.hidden.pe]CHAN OF REAL32 o.inp,
+		       CHAN OF BPN.CTRL ctrl)
+  [no.hidden.pe][no.output.pe]CHAN OF BOOL ctrlar :
+  PAR
+    PAR i = 0 FOR no.hidden.pe
+      PAR j = 0 FOR no.output.pe
+	connect (h.outp[i][j], o.inp[j][i], ctrlar[i][j])
+    BOOL flag :
+    SEQ
+      flag := TRUE
+      WHILE flag
+	ctrl ? CASE
+	  bpn.c.kill
+	    flag := FALSE
+	  bpn.c.reset
+	    SKIP
+	  bpn.c.init
+	    SKIP
+	  bpn.c.learn
+	    SKIP
+	  bpn.c.operate
+	    SKIP
+	  bpn.c.load
+	    SKIP
+	  bpn.c.save
+	    SKIP
+	  bpn.c.change.learning.rate
+	    SKIP
+      PAR i = 0 FOR no.hidden.pe
+	PAR j = 0 FOR no.output.pe
+	  ctrlar[i][j] ! FALSE
+:
+
+PROC cross.connect.oi.delta ([no.output.pe][no.hidden.pe]CHAN OF REAL32 o.outp.delta,
+			     [no.hidden.pe][no.output.pe]CHAN OF REAL32 h.inp.delta,
+			     CHAN OF BPN.CTRL ctrl)
+  [no.output.pe][no.hidden.pe]CHAN OF BOOL ctrlar :
+  PAR
+    PAR i = 0 FOR no.output.pe
+      PAR j = 0 FOR no.hidden.pe
+	connect (o.outp.delta[i][j], h.inp.delta[j][i], ctrlar[i][j])
+    BOOL flag :
+    SEQ
+      flag := TRUE
+      WHILE flag
+	ctrl ? CASE
+	  bpn.c.kill
+	    flag := FALSE
+	  bpn.c.reset
+	    SKIP
+	  bpn.c.init
+	    SKIP
+	  bpn.c.learn
+	    SKIP
+	  bpn.c.operate
+	    SKIP
+	  bpn.c.load
+	    SKIP
+	  bpn.c.save
+	    SKIP
+	  bpn.c.change.learning.rate
+	    SKIP
+      PAR i = 0 FOR no.output.pe
+	PAR j = 0 FOR no.hidden.pe
+	  ctrlar[i][j] ! FALSE
+:

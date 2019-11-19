@@ -1,0 +1,15 @@
+--
+-- Version 2.70, 14th April 1989
+--
+-- linker command file "main2.l4h"
+--
+main2.t4h
+hostio.lib
+convert.lib
+la2.t4h
+string.lib
+..\lib\supp.lib
+lape.t4h
+tbmaths.lib
+lagrp.t4h
+occambh.lib

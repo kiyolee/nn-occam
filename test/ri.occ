@@ -1,0 +1,38 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+  INT32 sid :
+  BYTE res :
+  SEQ
+    so.open (fs, ts, "lpc\i_10.bin", spt.binary, spm.input, sid, res)
+    IF
+      res = spr.ok
+	[132]INT16 y :
+	INT len :
+	SEQ
+	  len := 264
+	  WHILE len = 264
+	    SEQ
+	      [264]BYTE b RETYPES y :
+	      so.read (fs, ts, sid, len, b)
+	      IF
+		len = 264
+		  SEQ
+		    SEQ i = 0 FOR 12
+		      SEQ j = 0 FOR 11
+			SEQ
+			  so.write.int (fs, ts, INT y[(i*11)+j], 6)
+			  IF
+			    j < 10
+			      so.write.char (fs, ts, ' ')
+			    TRUE
+			      so.write.char (fs, ts, '*n')
+		    SEQ i = 0 FOR 3
+		      so.write.char (fs, ts, '*n')
+		TRUE
+		  SKIP
+      TRUE
+	so.write.string.nl (fs, ts, "open file error!")
+    so.exit (fs, ts, sps.success)
+:

@@ -1,0 +1,70 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "tbmaths.lib"
+
+#INCLUDE "bpn.inc"
+#USE "..\lib\supp.lib"
+
+PROC weight.init (INT req, []REAL32 weight)
+  VAL sz IS SIZE weight :
+  IF
+    req <> 0
+      INT32 seed :
+      SEQ
+	seed := INT32 req
+	SEQ i = 0 FOR sz
+	  weight[i], seed := rand.delta (seed)
+	req := INT seed
+    TRUE
+      SEQ i = 0 FOR sz
+	weight[i] := 0.0 (REAL32)
+:
+
+PROC wait.all.input ([]CHAN OF REAL32 inp,[]REAL32 x)
+  VAL inp.sz IS SIZE inp :
+  VAL x.sz IS SIZE x :
+  IF
+    (inp.sz = x.sz) AND (inp.sz <= max.no.chan)
+      PAR i = 0 FOR max.no.chan
+	IF
+	  i < inp.sz
+	    inp[i] ? x[i]
+	  TRUE
+	    SKIP
+    TRUE
+      SEQ i = 0 FOR x.sz
+	x[i] := 0.0 (REAL32)
+:
+
+PROC weighted.sum (VAL []REAL32 x, VAL []REAL32 w, REAL32 sum)
+  VAL x.sz IS SIZE x :
+  VAL w.sz IS SIZE w :
+  IF
+    x.sz = w.sz
+      SEQ
+	sum := 0.0 (REAL32)
+	SEQ i = 0 FOR x.sz
+	  sum := sum + (x[i] * w[i])
+    TRUE
+      sum := 0.0 (REAL32)
+:
+
+PROC array.sum (VAL []REAL32 x, REAL32 sum)
+  VAL x.sz IS SIZE x :
+  SEQ
+    sum := 0.0 (REAL32)
+    SEQ i = 0 FOR x.sz
+      sum := sum + x[i]
+:
+
+REAL32 FUNCTION act.func.g (VAL REAL32 sum)
+  VALOF
+    SKIP
+    RESULT TANH (sum)
+:
+
+REAL32 FUNCTION act.func.g.dash (VAL REAL32 sum)
+  VALOF
+    SKIP
+    RESULT 1.0 (REAL32) - (TANH (sum) * TANH (sum))
+:

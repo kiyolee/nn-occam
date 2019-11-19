@@ -1,0 +1,20 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+PROC main (CHAN OF SP fs, ts, []INT memory)
+  BYTE key, res :
+  SEQ
+    key := 0 (BYTE)
+    res := spr.ok
+    WHILE (key <> #0D (BYTE)) AND (res = spr.ok)
+      SEQ
+	so.getkey (fs, ts, key, res)
+	IF
+	  res = spr.ok
+	    SEQ
+	      so.write.hex.int (fs, ts, INT key, 2)
+	      so.write.nl (fs, ts)
+	  TRUE
+	    SKIP
+    so.exit (fs, ts, sps.success)
+:

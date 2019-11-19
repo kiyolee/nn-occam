@@ -1,0 +1,25 @@
+#INCLUDE "hostio.inc"
+#INCLUDE "linkaddr.inc"
+
+#INCLUDE "ko.inc"
+
+#USE "main2.c4h"
+#USE "kogrpl.c4h"
+
+CHAN OF SP fs, ts :
+
+CHAN OF KO.LINK.IN ko.p0.in :
+CHAN OF KO.LINK.OUT ko.p0.out :
+
+PLACED PAR
+  PROCESSOR 0 T414
+    PLACE ts AT link0.out :
+    PLACE fs AT link0.in  :
+    PLACE ko.p0.in  AT link1.out :
+    PLACE ko.p0.out AT link1.in  :
+    main (fs, ts, ko.p0.out, ko.p0.in)
+
+  PROCESSOR 1 T414
+    PLACE ko.p0.out AT link0.out :
+    PLACE ko.p0.in  AT link0.in  :
+    ko.group.loop (ko.p0.in, ko.p0.out)

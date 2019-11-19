@@ -1,0 +1,74 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+
+#INCLUDE "bpn.inc"
+#USE "pesupp.t4h"
+
+PROC bpn.hidden.pe (VAL INT i.id, VAL INT iseed,
+		    CHAN OF BPN.CTRL ctrl,
+		    [no.input]CHAN OF REAL32 inp,
+		    [no.output.pe]CHAN OF REAL32 outp,
+		    [no.output.pe]CHAN OF REAL32 inp.delta,
+		    CHAN OF REAL32 woutp)
+  INT id, seed, seed2 :
+  BOOL cont :
+  [no.input]REAL32 weight :
+  VAL default.learning.rate IS 0.05 (REAL32) :
+  REAL32 learning.rate :
+  SEQ
+    id := i.id
+    seed := iseed
+    seed2 := iseed
+    learning.rate := default.learning.rate
+    cont := TRUE
+    WHILE cont
+      ctrl ? CASE
+	bpn.c.kill
+	  cont := FALSE
+	bpn.c.reset
+	  INT r :
+	  SEQ
+	    r := 0
+	    weight.init (r, weight)
+	bpn.c.init
+	  SEQ
+	    IF
+	      seed = 0
+		SEQ
+		  seed2 := seed2 + 12347
+		  seed := seed2
+	      TRUE
+		SKIP
+	    weight.init (seed, weight)
+	bpn.c.learn
+	  REAL32 sum, h.out, delta.sum, local.delta :
+	  [no.input]REAL32 x :
+	  [no.output.pe]REAL32 delta :
+	  SEQ
+	    wait.all.input (inp, x)
+	    weighted.sum (x, weight, sum)
+	    h.out := act.func.g (sum)
+	    PAR i = 0 FOR no.output.pe
+	      outp[i] ! h.out
+	    wait.all.input (inp.delta, delta)
+	    array.sum (delta, delta.sum)
+	    local.delta := act.func.g.dash (sum) * delta.sum
+	    SEQ i = 0 FOR no.input
+	      weight[i] := weight[i] + (learning.rate * (local.delta * x[i]))
+	bpn.c.operate
+	  REAL32 sum, h.out :
+	  [no.input]REAL32 x :
+	  SEQ
+	    wait.all.input (inp, x)
+	    weighted.sum (x, weight, sum)
+	    h.out := act.func.g (sum)
+	    PAR i = 0 FOR no.output.pe
+	      outp[i] ! h.out
+	bpn.c.change.learning.rate
+	  inp[0] ? learning.rate
+	bpn.c.load
+	  wait.all.input (inp, weight)
+	bpn.c.save
+	  SEQ i = 0 FOR no.input
+	    woutp ! weight[i]
+:

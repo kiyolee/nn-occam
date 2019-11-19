@@ -1,0 +1,403 @@
+#INCLUDE "hostio.inc"
+#USE "hostio.lib"
+#USE "tbmaths.lib"
+#USE "string.lib"
+
+#USE "..\lib\supp.lib"
+
+#INCLUDE "bpn.inc"
+#USE "hidpe.t4h"
+#USE "outpe.t4h"
+#USE "xcon.t4h"
+
+PROC bpn.init ([no.pe+2]CHAN OF BPN.CTRL ctrl)
+  PAR i = 0 FOR no.pe
+    ctrl[i] ! bpn.c.init
+:
+
+PROC bpn.kill ([no.pe+2]CHAN OF BPN.CTRL ctrl)
+  PAR i = 0 FOR no.pe+2
+    ctrl[i] ! bpn.c.kill
+:
+
+PROC bpn.change.learning.rate ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+			       [no.hidden.pe][no.input]CHAN OF REAL32 inp,
+			       [no.output.pe]CHAN OF REAL32 o.winp,
+			       VAL REAL32 lr)
+  PAR i = 0 FOR no.pe
+    SEQ
+      ctrl[i] ! bpn.c.change.learning.rate
+      IF
+	i < no.hidden.pe
+	  inp[i][0] ! lr
+	TRUE
+	  o.winp[i-no.hidden.pe] ! lr
+:
+
+PROC save.weight (CHAN OF SP fs, ts, VAL INT32 sid, VAL []REAL32 w, BOOL ok)
+  INT len :
+  VAL SZ.REAL32 IS 4 :
+  VAL w.len IS (SIZE w) * SZ.REAL32 :
+  VAL max.buf.len IS 200 :
+  [max.buf.len]REAL32 wbuf :
+  SEQ
+    len := w.len
+    SEQ i = 0 FOR SIZE w
+      wbuf[i] := w[i]
+    [max.buf.len * SZ.REAL32]BYTE b RETYPES wbuf :
+    so.write (fs, ts, sid, [b FROM 0 FOR w.len], len)
+    ok := (len = w.len)
+:
+
+PROC load.weight (CHAN OF SP fs, ts, VAL INT32 sid, []REAL32 w, BOOL ok)
+  INT len :
+  VAL SZ.REAL32 IS 4 :
+  VAL w.len IS (SIZE w) * SZ.REAL32 :
+  VAL max.buf.len IS 200 :
+  [max.buf.len]REAL32 wbuf :
+  SEQ
+    len := w.len
+    [max.buf.len * SZ.REAL32]BYTE b RETYPES wbuf :
+    so.read (fs, ts, sid, len, [b FROM 0 FOR w.len])
+    SEQ i = 0 FOR SIZE w
+      w[i] := wbuf[i]
+    ok := (len = w.len)
+:
+
+PROC bpn.save.weight ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+		      [no.hidden.pe]CHAN OF REAL32 h.woutp,
+		      [no.output.pe]CHAN OF REAL32 outp,
+		      CHAN OF SP fs, ts,
+		      VAL INT32 sid, BOOL ok)
+  SEQ
+    ok := TRUE
+    SEQ i = 0 FOR no.pe
+      IF
+	ok
+	  SEQ
+	    ctrl[i] ! bpn.c.save
+	    IF
+	      i < no.hidden.pe
+		[no.input]REAL32 w :
+		SEQ
+		  SEQ j = 0 FOR no.input
+		    h.woutp[i] ? w[j]
+		  save.weight (fs, ts, sid, w, ok)
+	      TRUE
+		[no.hidden.pe]REAL32 w :
+		SEQ
+		  SEQ j = 0 FOR no.hidden.pe
+		    outp[i-no.hidden.pe] ? w[j]
+		  save.weight (fs, ts, sid, w, ok)
+	TRUE
+	  SKIP
+:
+
+PROC bpn.load.weight ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+		      [no.hidden.pe][no.input]CHAN OF REAL32 inp,
+		      [no.output.pe]CHAN OF REAL32 o.winp,
+		      CHAN OF SP fs, ts,
+		      VAL INT32 sid, BOOL ok)
+  SEQ
+    ok := TRUE
+    SEQ i = 0 FOR no.pe
+      IF
+	ok
+	  SEQ
+	    ctrl[i] ! bpn.c.load
+	    IF
+	      i < no.hidden.pe
+		[no.input]REAL32 w :
+		SEQ
+		  load.weight (fs, ts, sid, w, ok)
+		  PAR j = 0 FOR no.input
+		    inp[i][j] ! w[j]
+	      TRUE
+		[no.hidden.pe]REAL32 w :
+		SEQ
+		  load.weight (fs, ts, sid, w, ok)
+		  SEQ j = 0 FOR no.hidden.pe
+		    o.winp[i-no.hidden.pe] ? w[j]
+	TRUE
+	  SKIP
+:
+
+PROC show.bpn.para (CHAN OF SP fs, ts, VAL [3]INT32 p)
+  SEQ
+    so.write.char (fs, ts, '[')
+    so.write.int (fs, ts, INT p[0], 0)
+    so.write.char (fs, ts, ',')
+    so.write.int (fs, ts, INT p[1], 0)
+    so.write.char (fs, ts, ',')
+    so.write.int (fs, ts, INT p[2], 0)
+    so.write.string (fs, ts, "] ")
+:
+
+PROC bpn.save ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+	       [no.hidden.pe]CHAN OF REAL32 h.woutp,
+	       [no.output.pe]CHAN OF REAL32 outp,
+	       CHAN OF SP fs, ts,
+	       VAL []BYTE fn, BYTE res)
+  INT32 sid :
+  INT cpos :
+  BOOL ok :
+  SEQ
+    cpos := char.pos (0 (BYTE), fn)
+    IF
+      cpos < 0
+	cpos := SIZE fn
+      TRUE
+	SKIP
+    so.write.string (fs, ts, "SAVING *"")
+    so.write.string (fs, ts, [fn FROM 0 FOR cpos])
+    so.write.string (fs, ts, "*" ")
+    so.open (fs, ts, fn, spt.binary, spm.output, sid, res)
+    ok := FALSE
+    IF
+      res = spr.ok
+	[3]INT32 para :
+	SEQ
+	  [para FROM 0 FOR 3] := [INT32 no.input,
+				  INT32 no.hidden.pe, INT32 no.output.pe]
+	  show.bpn.para (fs, ts, para)
+	  [3]REAL32 rp RETYPES para :
+	  save.weight (fs, ts, sid, rp, ok)
+	  IF
+	    ok
+	      bpn.save.weight (ctrl, h.woutp, outp, fs, ts, sid, ok)
+	    TRUE
+	      SKIP
+	  so.close (fs, ts, sid, res)
+	  IF
+	    NOT ok
+	      res := spr.operation.failed
+	    TRUE
+	      SKIP
+      TRUE
+	SKIP
+    IF
+      ok
+	so.write.string.nl (fs, ts, "SUCCESS")
+      TRUE
+	so.write.string.nl (fs, ts, "FAILED")
+:
+
+PROC bpn.load ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+	       [no.hidden.pe][no.input]CHAN OF REAL32 inp,
+	       [no.output.pe]CHAN OF REAL32 o.winp,
+	       CHAN OF SP fs, ts,
+	       VAL []BYTE fn, BYTE res)
+  INT32 sid :
+  INT cpos :
+  BOOL ok :
+  SEQ
+    cpos := char.pos (0 (BYTE), fn)
+    IF
+      cpos < 0
+	cpos := SIZE fn
+      TRUE
+	SKIP
+    so.write.string (fs, ts, "LOADING *"")
+    so.write.string (fs, ts, [fn FROM 0 FOR cpos])
+    so.write.string (fs, ts, "*" ")
+    so.open (fs, ts, fn, spt.binary, spm.input, sid, res)
+    ok := FALSE
+    IF
+      res = spr.ok
+	[3]INT32 para :
+	SEQ
+	  [3]REAL32 rp RETYPES para :
+	  load.weight (fs, ts, sid, rp, ok)
+	  show.bpn.para (fs, ts, para)
+	  IF
+	    ok
+	      bpn.load.weight (ctrl, inp, o.winp, fs, ts, sid, ok)
+	    TRUE
+	      SKIP
+	  so.close (fs, ts, sid, res)
+	  IF
+	    NOT ok
+	      res := spr.operation.failed
+	    TRUE
+	      SKIP
+      TRUE
+	SKIP
+    IF
+      ok
+	so.write.string.nl (fs, ts, "SUCCESS")
+      TRUE
+	so.write.string.nl (fs, ts, "FAILED")
+:
+
+PROC bpn.learn.step ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+		     [no.hidden.pe][no.input]CHAN OF REAL32 inp,
+		     [no.output.pe]CHAN OF REAL32 linp,
+		     VAL [no.input]REAL32 tdat,
+		     VAL [no.output.pe]REAL32 ldat)
+  PAR i = 0 FOR no.pe
+    SEQ
+      ctrl[i] ! bpn.c.learn
+      IF
+	i < no.hidden.pe
+	  PAR j = 0 FOR no.input
+	    inp[i][j] ! tdat[j]
+	TRUE
+	  linp[i-no.hidden.pe] ! ldat[i-no.hidden.pe]
+:
+
+PROC bpn.operate ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+		  [no.hidden.pe][no.input]CHAN OF REAL32 inp,
+		  [no.output.pe]CHAN OF REAL32 outp,
+		  VAL [no.input]REAL32 x.in,
+		  [no.output.pe]REAL32 y.out,
+		  INT sel)
+  SEQ
+    PAR i = 0 FOR no.pe
+      SEQ
+	ctrl[i] ! bpn.c.operate
+	IF
+	  i < no.hidden.pe
+	    PAR j = 0 FOR no.input
+	      inp[i][j] ! x.in[j]
+	  TRUE
+	    outp[i-no.hidden.pe] ? y.out[i-no.hidden.pe]
+    select.max.output (y.out, sel)
+:
+
+PROC bpn.learn ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+		[no.hidden.pe][no.input]CHAN OF REAL32 inp,
+		[no.output.pe]CHAN OF REAL32 linp,
+		CHAN OF SP fs, ts)
+  INT32 sid :
+  BYTE res :
+  SEQ
+    open.train.data (fs, ts, sid, res)
+    IF
+      res = spr.ok
+	INT32 s :
+	INT sel, cnt :
+	[no.input]REAL32 x.in :
+	[no.output.pe]REAL32 y.out :
+	SEQ
+	  so.write.string.nl (fs, ts, "START TRAINING")
+	  cnt := 1
+	  res := spr.ok
+	  WHILE res = spr.ok
+	    SEQ
+	      next.train.data (fs, ts, sid, s, [x.in FROM 0 FOR no.input-1],
+			       132, 10, 0, 11, 1, 10, res)
+	      sel := (INT s) - 1
+	      IF
+		res = spr.ok
+		  SEQ
+		    print.count (fs, ts, cnt, 10)
+		    x.in[no.input-1] := 1.0 (REAL32)
+		    SEQ i = 0 FOR no.output.pe
+		      IF
+			i = sel
+			  y.out[i] := 1.0 (REAL32)
+			TRUE
+			  y.out[i] := -1.0 (REAL32)
+		    bpn.learn.step (ctrl, inp, linp, x.in, y.out)
+		TRUE
+		  SKIP
+      TRUE
+	SKIP
+    so.write.nl (fs, ts)
+    close.train.data (fs, ts, sid, res)
+:
+
+PROC bpn.test ([no.pe+2]CHAN OF BPN.CTRL ctrl,
+	       [no.hidden.pe][no.input]CHAN OF REAL32 inp,
+	       [no.output.pe]CHAN OF REAL32 outp,
+	       CHAN OF SP fs, ts)
+  INT32 sid :
+  BYTE res :
+  SEQ
+    open.train.data (fs, ts, sid, res)
+    IF
+      res = spr.ok
+	INT32 s :
+	INT sel, msel, cnt :
+	[no.input]REAL32 x.in :
+	[no.output.pe]REAL32 y.out :
+	[no.output.pe]INT right, wrong, wrong.match :
+	SEQ
+	  so.write.string.nl (fs, ts, "START TESTING")
+	  SEQ i = 0 FOR no.output.pe
+	    SEQ
+	      right[i] := 0
+	      wrong[i] := 0
+	      wrong.match[i] := 0
+	  cnt := 1
+	  res := spr.ok
+	  WHILE res = spr.ok
+	    SEQ
+	      next.train.data (fs, ts, sid, s, [x.in FROM 0 FOR no.input-1],
+			       132, 10, 0, 11, 1, 10, res)
+	      sel := (INT s) - 1
+	      IF
+		res = spr.ok
+		  SEQ
+		    print.count (fs, ts, cnt, 10)
+		    x.in[no.input-1] := 1.0 (REAL32)
+		    bpn.operate (ctrl, inp, outp, x.in, y.out, msel)
+		    IF
+		      sel <> msel
+			SEQ
+			  wrong[sel] := wrong[sel] + 1
+			  wrong.match[msel] := wrong.match[msel] + 1
+		      TRUE
+			right[sel] := right[sel] + 1
+		TRUE
+		  SKIP
+	  so.write.nl (fs, ts)
+	  print.stat (fs, ts, right)
+	  print.stat (fs, ts, wrong)
+	  print.stat (fs, ts, wrong.match)
+      TRUE
+	SKIP
+    so.write.nl (fs, ts)
+    close.train.data (fs, ts, sid, res)
+:
+
+PROC back.propagation.network (CHAN OF SP fs, ts)
+  INT32 seed :
+  SEQ
+    current.time (fs, ts, seed)
+    [no.pe+2]CHAN OF BPN.CTRL ctrl :
+    [no.hidden.pe][no.input]CHAN OF REAL32 inp :
+    [no.output.pe]CHAN OF REAL32 outp :
+    [no.output.pe]CHAN OF REAL32 linp :
+    [no.hidden.pe][no.output.pe]CHAN OF REAL32 h.outp :
+    [no.hidden.pe][no.output.pe]CHAN OF REAL32 h.inp.delta :
+    [no.output.pe][no.hidden.pe]CHAN OF REAL32 o.inp :
+    [no.output.pe][no.hidden.pe]CHAN OF REAL32 o.outp.delta :
+    [no.hidden.pe]CHAN OF REAL32 h.woutp :
+    [no.output.pe]CHAN OF REAL32 o.winp :
+    PAR
+      PAR i = 0 FOR no.pe
+	VAL pe.seed IS (INT seed)+(i*17) :
+	IF
+	  i < no.hidden.pe
+	    bpn.hidden.pe (i, pe.seed, ctrl[i],
+			   inp[i], h.outp[i], h.inp.delta[i], h.woutp[i])
+	  TRUE
+	    VAL o.idx IS (i-no.hidden.pe) :
+	    o.inp.a IS o.inp[o.idx] :
+	    outp.a IS outp[o.idx] :
+	    linp.a IS linp[o.idx] :
+	    o.outp.delta.a IS o.outp.delta[o.idx] :
+	    o.winp.a IS o.winp[o.idx] :
+	    bpn.output.pe (i, pe.seed, ctrl[i],
+			   o.inp.a, outp.a, linp.a, o.outp.delta.a, o.winp.a)
+      cross.connect.oi (h.outp, o.inp, ctrl[no.pe])
+      cross.connect.oi.delta (o.outp.delta, h.inp.delta, ctrl[no.pe+1])
+      BYTE res :
+      SEQ
+	bpn.init (ctrl)
+	bpn.change.learning.rate (ctrl, inp, o.winp, 0.1 (REAL32))
+	bpn.learn (ctrl, inp, linp, fs, ts)
+	bpn.test (ctrl, inp, outp, fs, ts)
+	bpn.kill (ctrl)
+:

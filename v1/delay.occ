@@ -1,0 +1,7 @@
+PROC delay (VAL INT interval)
+  TIMER clock :
+  INT timenow :
+  SEQ
+    clock ? timenow
+    clock ? AFTER timenow PLUS interval
+:
